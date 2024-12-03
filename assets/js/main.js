@@ -224,6 +224,42 @@ function evaluateBoard(game, move, prevSum, color) {
     }
   }
 
+  //增强评估函数部分
+
+  // 1. 棋子活动范围
+  const mobility = game.ugly_moves({ verbose: true }).length;
+  prevSum += (move.color === color ? 1 : -1) * mobility;
+
+  // 2. 控制中心
+  const centerSquares = ["d4", "d5", "e4", "e5"];
+  if (centerSquares.includes(move.to)) {
+    prevSum += move.color === color ? 20 : -20;
+  }
+
+  // 3. 王的安全性
+  const kingPosition = game.board().flat().find((p) => p && p.type === "k" && p.color === move.color);
+  if (kingPosition) {
+    const kingSafetyBonus = kingPosition.square[1] <= 3 ? 30 : -30; // 示例：中心王暴露扣分
+    prevSum += move.color === color ? kingSafetyBonus : -kingSafetyBonus;
+  }
+
+  // 4. 兵结构
+  // 示例：简单判定通路兵
+  if (move.piece === "p") {
+    const isPassedPawn = !game.board().some((row) =>
+      row.some(
+        (p) =>
+          p &&
+          p.type === "p" &&
+          p.color !== move.color &&
+          Math.abs(p.square[0] - move.to[0]) <= 1
+      )
+    );
+    if (isPassedPawn) {
+      prevSum += move.color === color ? 50 : -50;
+    }
+  }
+
   return prevSum;
 }
 
@@ -246,29 +282,101 @@ function evaluateBoard(game, move, prevSum, color) {
  * 输出：
  *  位于当前子树的根的最佳移动
  */
+// function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
+//   positionCount++;
+//   var children = game.ugly_moves({ verbose: true });
+
+//   // 随机排序移动，因此在相同的关系下不会总是选择相同的移动
+//   children.sort(function (a, b) {
+//     return 0.5 - Math.random();
+//   });
+
+//   var currMove;
+//   // 超过最大深度或节点是终端节点 (无子节点)
+//   if (depth === 0 || children.length === 0) {
+//     return [null, sum];
+//   }
+
+//   // 从 'children' 列表中查找最大 / 最小值 (可能的移动)
+//   var maxValue = Number.NEGATIVE_INFINITY;
+//   var minValue = Number.POSITIVE_INFINITY;
+//   var bestMove;
+//   for (var i = 0; i < children.length; i++) {
+//     currMove = children[i];
+
+//     // 注意：在我们的例子中，'children' 只是经过简单修改的游戏状态
+//     var currPrettyMove = game.ugly_move(currMove);
+//     var newSum = evaluateBoard(game, currPrettyMove, sum, color);
+//     var [childBestMove, childValue] = minimax(
+//       game,
+//       depth - 1,
+//       alpha,
+//       beta,
+//       !isMaximizingPlayer,
+//       newSum,
+//       color
+//     );
+
+//     game.undo();
+
+//     if (isMaximizingPlayer) {
+//       if (childValue > maxValue) {
+//         maxValue = childValue;
+//         bestMove = currPrettyMove;
+//       }
+//       if (childValue > alpha) {
+//         alpha = childValue;
+//       }
+//     } else {
+//       if (childValue < minValue) {
+//         minValue = childValue;
+//         bestMove = currPrettyMove;
+//       }
+//       if (childValue < beta) {
+//         beta = childValue;
+//       }
+//     }
+
+//     // α-β 剪枝
+//     if (alpha >= beta) {
+//       break;
+//     }
+//   }
+
+//   if (isMaximizingPlayer) {
+//     return [bestMove, maxValue];
+//   } else {
+//     return [bestMove, minValue];
+//   }
+// }
+// 优化后的代码示例
+// 以下实现了动态排序和启发式深度优化：
 function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
   positionCount++;
   var children = game.ugly_moves({ verbose: true });
 
-  // 随机排序移动，因此在相同的关系下不会总是选择相同的移动
-  children.sort(function (a, b) {
-    return 0.5 - Math.random();
+  // 动态排序 (优先吃子或将军的操作)
+  children.sort((a, b) => {
+    const aValue = a.captured ? weights[a.captured] : 0;
+    const bValue = b.captured ? weights[b.captured] : 0;
+    return bValue - aValue; // 按价值降序
   });
 
   var currMove;
-  // 超过最大深度或节点是终端节点 (无子节点)
   if (depth === 0 || children.length === 0) {
+    // 使用启发式深度：如果局面不稳定 (捕获操作)，继续深搜
+    if (depth === 0 && isUnstable(game, color)) {
+      return quiescenceSearch(game, alpha, beta, isMaximizingPlayer, sum, color);
+    }
     return [null, sum];
   }
 
-  // 从 'children' 列表中查找最大 / 最小值 (可能的移动)
   var maxValue = Number.NEGATIVE_INFINITY;
   var minValue = Number.POSITIVE_INFINITY;
   var bestMove;
+
   for (var i = 0; i < children.length; i++) {
     currMove = children[i];
-
-    // 注意：在我们的例子中，'children' 只是经过简单修改的游戏状态
     var currPrettyMove = game.ugly_move(currMove);
     var newSum = evaluateBoard(game, currPrettyMove, sum, color);
     var [childBestMove, childValue] = minimax(
@@ -288,17 +396,13 @@ function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
         maxValue = childValue;
         bestMove = currPrettyMove;
       }
-      if (childValue > alpha) {
-        alpha = childValue;
-      }
+      alpha = Math.max(alpha, childValue);
     } else {
       if (childValue < minValue) {
         minValue = childValue;
         bestMove = currPrettyMove;
       }
-      if (childValue < beta) {
-        beta = childValue;
-      }
+      beta = Math.min(beta, childValue);
     }
 
     // α-β 剪枝
@@ -307,12 +411,55 @@ function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
     }
   }
 
-  if (isMaximizingPlayer) {
-    return [bestMove, maxValue];
-  } else {
-    return [bestMove, minValue];
-  }
+  return isMaximizingPlayer ? [bestMove, maxValue] : [bestMove, minValue];
 }
+
+// 启发式深度的静态搜索
+function quiescenceSearch(game, alpha, beta, isMaximizingPlayer, sum, color) {
+  var standPat = sum;
+
+  if (isMaximizingPlayer) {
+    if (standPat >= beta) return beta;
+    if (standPat > alpha) alpha = standPat;
+  } else {
+    if (standPat <= alpha) return alpha;
+    if (standPat < beta) beta = standPat;
+  }
+
+  var children = game.ugly_moves({ verbose: true }).filter((move) => 'captured' in move);
+  children.sort((a, b) => weights[b.captured] - weights[a.captured]); // 优先吃子
+
+  for (var i = 0; i < children.length; i++) {
+    var currMove = children[i];
+    var currPrettyMove = game.ugly_move(currMove);
+    var newSum = evaluateBoard(game, currPrettyMove, sum, color);
+    var childValue = quiescenceSearch(
+      game,
+      alpha,
+      beta,
+      !isMaximizingPlayer,
+      newSum,
+      color
+    );
+    game.undo();
+
+    if (isMaximizingPlayer) {
+      alpha = Math.max(alpha, childValue);
+      if (alpha >= beta) break;
+    } else {
+      beta = Math.min(beta, childValue);
+      if (alpha >= beta) break;
+    }
+  }
+
+  return isMaximizingPlayer ? alpha : beta;
+}
+
+// 判断局面是否不稳定
+function isUnstable(game, color) {
+  return game.ugly_moves({ verbose: true }).some((move) => 'captured' in move);
+}
+
 
 function checkStatus(color) {
   if (color == 'black') {
@@ -321,7 +468,7 @@ function checkStatus(color) {
     colorName = '白方';
   }
   if (game.in_checkmate()) {
-    $('#status').html(`<b>将死！</b><b>${colorName}</b>失败`);
+    $('#status').html(`<b>将死！</b><b>${colorName}</b>胜利`);
   } else if (game.insufficient_material()) {
     $('#status').html(`<b>和棋！</b> (子力不足)`);
   } else if (game.in_threefold_repetition()) {
@@ -436,7 +583,7 @@ function makeBestMove(color) {
 /*
  * 从给定的颜色开始执行机器对局
  */
-function compVsComp(color) {
+function compVsComp(color) {6
   if (!checkStatus({ w: 'white', b: 'black' }[color])) {
     timer = window.setTimeout(function () {
       makeBestMove(color);
