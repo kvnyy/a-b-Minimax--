@@ -9,10 +9,15 @@ var STACK_SIZE = 100; // 步历史记录堆栈的大小
 
 var board = null;
 var $board = $('#myBoard');
+// 获取棋盘元素
+
+// $board.orientation('white');
+
+
 var game = new Chess();
 var globalSum = 0; // 总是从黑方的角度判断，白方为负
-var whiteSquareGrey = '#a9a9a9';
-var blackSquareGrey = '#696969';
+var whiteSquareGrey = '#eeeed2';
+var blackSquareGrey = '#759656';
 
 var squareClass = 'square-55d63';
 var squareToHighlight = null;
@@ -27,8 +32,15 @@ var config = {
   onMouseoutSquare: onMouseoutSquare,
   onMouseoverSquare: onMouseoverSquare,
   onSnapEnd: onSnapEnd,
+  squareStyles: {
+    white: { backgroundColor: whiteSquareGrey }, // 白色格子的颜色
+    black: { backgroundColor: blackSquareGrey }  // 黑色格子的颜色
+  }
 };
 board = Chessboard('myBoard', config);
+
+
+
 
 timer = null;
 
@@ -237,28 +249,46 @@ function evaluateBoard(game, move, prevSum, color) {
   }
 
   // 3. 王的安全性
-  const kingPosition = game.board().flat().find((p) => p && p.type === "k" && p.color === move.color);
+  const kingPosition = (() => {
+    for (let rowIndex = 0; rowIndex < 8; rowIndex++) {
+      for (let colIndex = 0; colIndex < 8; colIndex++) {
+        const piece = game.board()[rowIndex][colIndex];
+        if (piece && piece.type === "k" && piece.color === move.color) {
+          return { row: rowIndex, col: colIndex };
+        }
+      }
+    }
+    return null; // 如果棋盘中没有找到国王
+  })();
+  
   if (kingPosition) {
-    const kingSafetyBonus = kingPosition.square[1] <= 3 ? 30 : -30; // 示例：中心王暴露扣分
+    // 示例规则：如果国王位于前三行（暴露），扣分；位于后三行，加分
+    const kingSafetyBonus = kingPosition.row <= 2 ? -30 : 30;
     prevSum += move.color === color ? kingSafetyBonus : -kingSafetyBonus;
   }
+  
 
   // 4. 兵结构
   // 示例：简单判定通路兵
   if (move.piece === "p") {
-    const isPassedPawn = !game.board().some((row) =>
-      row.some(
-        (p) =>
-          p &&
-          p.type === "p" &&
-          p.color !== move.color &&
-          Math.abs(p.square[0] - move.to[0]) <= 1
+    const toRow = 8 - parseInt(move.to[1]); // 转换目标格的行
+    const toCol = move.to.charCodeAt(0) - "a".charCodeAt(0); // 转换目标格的列
+  
+    const isPassedPawn = !game.board().some((row, rowIndex) =>
+      row.some((p, colIndex) =>
+        p &&
+        p.type === "p" &&
+        p.color !== move.color &&
+        Math.abs(rowIndex - toRow) <= 1 &&
+        Math.abs(colIndex - toCol) <= 1
       )
     );
+  
     if (isPassedPawn) {
       prevSum += move.color === color ? 50 : -50;
     }
   }
+  
 
   return prevSum;
 }
@@ -351,58 +381,54 @@ function evaluateBoard(game, move, prevSum, color) {
 // }
 // 优化后的代码示例
 // 以下实现了动态排序和启发式深度优化：
+
 function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
   positionCount++;
   var children = game.ugly_moves({ verbose: true });
 
-  // 动态排序 (优先吃子或将军的操作)
-  children.sort((a, b) => {
-    const aValue = a.captured ? weights[a.captured] : 0;
-    const bValue = b.captured ? weights[b.captured] : 0;
-    return bValue - aValue; // 按价值降序
+  // 对所有合法走法进行排序，优先考虑评分较高的走法
+  children.sort(function (a, b) {
+    var scoreA = evaluateMove(game, a, sum, color); // 根据启发式评分
+    var scoreB = evaluateMove(game, b, sum, color);
+    return scoreB - scoreA; // 排序时优先考虑较高的评分
   });
 
-  var currMove;
+  // 超过最大深度或节点是终端节点 (无子节点)
   if (depth === 0 || children.length === 0) {
-    // 使用启发式深度：如果局面不稳定 (捕获操作)，继续深搜
-    if (depth === 0 && isUnstable(game, color)) {
-      return quiescenceSearch(game, alpha, beta, isMaximizingPlayer, sum, color);
-    }
     return [null, sum];
   }
 
-  var maxValue = Number.NEGATIVE_INFINITY;
-  var minValue = Number.POSITIVE_INFINITY;
-  var bestMove;
+  var bestMove = null;
+
+  // 选择最大值或最小值
+  var value = isMaximizingPlayer ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
 
   for (var i = 0; i < children.length; i++) {
-    currMove = children[i];
-    var currPrettyMove = game.ugly_move(currMove);
-    var newSum = evaluateBoard(game, currPrettyMove, sum, color);
-    var [childBestMove, childValue] = minimax(
-      game,
-      depth - 1,
-      alpha,
-      beta,
-      !isMaximizingPlayer,
-      newSum,
-      color
-    );
+    var currMove = children[i];
+    game.ugly_move(currMove);
+    var newSum = evaluateBoard(game, currMove, sum, color);
 
+    // 递归调用
+    var [childBestMove, childValue] = minimax(game, depth - 1, alpha, beta, !isMaximizingPlayer, newSum, color);
     game.undo();
 
+    // 更新最佳走法和评估值
     if (isMaximizingPlayer) {
-      if (childValue > maxValue) {
-        maxValue = childValue;
-        bestMove = currPrettyMove;
+      if (childValue > value) {
+        value = childValue;
+        bestMove = currMove;
       }
-      alpha = Math.max(alpha, childValue);
+      if (value > alpha) {
+        alpha = value;
+      }
     } else {
-      if (childValue < minValue) {
-        minValue = childValue;
-        bestMove = currPrettyMove;
+      if (childValue < value) {
+        value = childValue;
+        bestMove = currMove;
       }
-      beta = Math.min(beta, childValue);
+      if (value < beta) {
+        beta = value;
+      }
     }
 
     // α-β 剪枝
@@ -411,55 +437,16 @@ function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
     }
   }
 
-  return isMaximizingPlayer ? [bestMove, maxValue] : [bestMove, minValue];
+  return [bestMove, value];
 }
 
-// 启发式深度的静态搜索
-function quiescenceSearch(game, alpha, beta, isMaximizingPlayer, sum, color) {
-  var standPat = sum;
-
-  if (isMaximizingPlayer) {
-    if (standPat >= beta) return beta;
-    if (standPat > alpha) alpha = standPat;
-  } else {
-    if (standPat <= alpha) return alpha;
-    if (standPat < beta) beta = standPat;
-  }
-
-  var children = game.ugly_moves({ verbose: true }).filter((move) => 'captured' in move);
-  children.sort((a, b) => weights[b.captured] - weights[a.captured]); // 优先吃子
-
-  for (var i = 0; i < children.length; i++) {
-    var currMove = children[i];
-    var currPrettyMove = game.ugly_move(currMove);
-    var newSum = evaluateBoard(game, currPrettyMove, sum, color);
-    var childValue = quiescenceSearch(
-      game,
-      alpha,
-      beta,
-      !isMaximizingPlayer,
-      newSum,
-      color
-    );
-    game.undo();
-
-    if (isMaximizingPlayer) {
-      alpha = Math.max(alpha, childValue);
-      if (alpha >= beta) break;
-    } else {
-      beta = Math.min(beta, childValue);
-      if (alpha >= beta) break;
-    }
-  }
-
-  return isMaximizingPlayer ? alpha : beta;
+// 评估一个走法的启发式函数，可以根据具体情况调整
+function evaluateMove(game, move, sum, color) {
+  game.ugly_move(move);
+  var evaluation = evaluateBoard(game, move, sum, color);
+  game.undo();
+  return evaluation;
 }
-
-// 判断局面是否不稳定
-function isUnstable(game, color) {
-  return game.ugly_moves({ verbose: true }).some((move) => 'captured' in move);
-}
-
 
 function checkStatus(color) {
   if (color == 'black') {
