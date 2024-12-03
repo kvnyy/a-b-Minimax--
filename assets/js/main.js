@@ -16,8 +16,8 @@ var $board = $('#myBoard');
 
 var game = new Chess();
 var globalSum = 0; // 总是从黑方的角度判断，白方为负
-var whiteSquareGrey = '#eeeed2';
-var blackSquareGrey = '#759656';
+var whiteSquareGrey = '#ff0';
+var blackSquareGrey = '#7ed126';
 
 var squareClass = 'square-55d63';
 var squareToHighlight = null;
@@ -312,122 +312,58 @@ function evaluateBoard(game, move, prevSum, color) {
  * 输出：
  *  位于当前子树的根的最佳移动
  */
-// function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
-//   positionCount++;
-//   var children = game.ugly_moves({ verbose: true });
-
-//   // 随机排序移动，因此在相同的关系下不会总是选择相同的移动
-//   children.sort(function (a, b) {
-//     return 0.5 - Math.random();
-//   });
-
-//   var currMove;
-//   // 超过最大深度或节点是终端节点 (无子节点)
-//   if (depth === 0 || children.length === 0) {
-//     return [null, sum];
-//   }
-
-//   // 从 'children' 列表中查找最大 / 最小值 (可能的移动)
-//   var maxValue = Number.NEGATIVE_INFINITY;
-//   var minValue = Number.POSITIVE_INFINITY;
-//   var bestMove;
-//   for (var i = 0; i < children.length; i++) {
-//     currMove = children[i];
-
-//     // 注意：在我们的例子中，'children' 只是经过简单修改的游戏状态
-//     var currPrettyMove = game.ugly_move(currMove);
-//     var newSum = evaluateBoard(game, currPrettyMove, sum, color);
-//     var [childBestMove, childValue] = minimax(
-//       game,
-//       depth - 1,
-//       alpha,
-//       beta,
-//       !isMaximizingPlayer,
-//       newSum,
-//       color
-//     );
-
-//     game.undo();
-
-//     if (isMaximizingPlayer) {
-//       if (childValue > maxValue) {
-//         maxValue = childValue;
-//         bestMove = currPrettyMove;
-//       }
-//       if (childValue > alpha) {
-//         alpha = childValue;
-//       }
-//     } else {
-//       if (childValue < minValue) {
-//         minValue = childValue;
-//         bestMove = currPrettyMove;
-//       }
-//       if (childValue < beta) {
-//         beta = childValue;
-//       }
-//     }
-
-//     // α-β 剪枝
-//     if (alpha >= beta) {
-//       break;
-//     }
-//   }
-
-//   if (isMaximizingPlayer) {
-//     return [bestMove, maxValue];
-//   } else {
-//     return [bestMove, minValue];
-//   }
-// }
-// 优化后的代码示例
-// 以下实现了动态排序和启发式深度优化：
-
 function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
   positionCount++;
   var children = game.ugly_moves({ verbose: true });
 
-  // 对所有合法走法进行排序，优先考虑评分较高的走法
+  // 随机排序移动，因此在相同的关系下不会总是选择相同的移动
   children.sort(function (a, b) {
-    var scoreA = evaluateMove(game, a, sum, color); // 根据启发式评分
-    var scoreB = evaluateMove(game, b, sum, color);
-    return scoreB - scoreA; // 排序时优先考虑较高的评分
+    return 0.5 - Math.random();
   });
 
+  var currMove;
   // 超过最大深度或节点是终端节点 (无子节点)
   if (depth === 0 || children.length === 0) {
     return [null, sum];
   }
 
-  var bestMove = null;
-
-  // 选择最大值或最小值
-  var value = isMaximizingPlayer ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
-
+  // 从 'children' 列表中查找最大 / 最小值 (可能的移动)
+  var maxValue = Number.NEGATIVE_INFINITY;
+  var minValue = Number.POSITIVE_INFINITY;
+  var bestMove;
   for (var i = 0; i < children.length; i++) {
-    var currMove = children[i];
-    game.ugly_move(currMove);
-    var newSum = evaluateBoard(game, currMove, sum, color);
+    currMove = children[i];
 
-    // 递归调用
-    var [childBestMove, childValue] = minimax(game, depth - 1, alpha, beta, !isMaximizingPlayer, newSum, color);
+    // 注意：在我们的例子中，'children' 只是经过简单修改的游戏状态
+    var currPrettyMove = game.ugly_move(currMove);
+    var newSum = evaluateBoard(game, currPrettyMove, sum, color);
+    var [childBestMove, childValue] = minimax(
+      game,
+      depth - 1,
+      alpha,
+      beta,
+      !isMaximizingPlayer,
+      newSum,
+      color
+    );
+
     game.undo();
 
-    // 更新最佳走法和评估值
     if (isMaximizingPlayer) {
-      if (childValue > value) {
-        value = childValue;
-        bestMove = currMove;
+      if (childValue > maxValue) {
+        maxValue = childValue;
+        bestMove = currPrettyMove;
       }
-      if (value > alpha) {
-        alpha = value;
+      if (childValue > alpha) {
+        alpha = childValue;
       }
     } else {
-      if (childValue < value) {
-        value = childValue;
-        bestMove = currMove;
+      if (childValue < minValue) {
+        minValue = childValue;
+        bestMove = currPrettyMove;
       }
-      if (value < beta) {
-        beta = value;
+      if (childValue < beta) {
+        beta = childValue;
       }
     }
 
@@ -437,16 +373,80 @@ function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
     }
   }
 
-  return [bestMove, value];
+  if (isMaximizingPlayer) {
+    return [bestMove, maxValue];
+  } else {
+    return [bestMove, minValue];
+  }
 }
+// 优化后的代码示例
+// 以下实现了动态排序和启发式深度优化：
 
-// 评估一个走法的启发式函数，可以根据具体情况调整
-function evaluateMove(game, move, sum, color) {
-  game.ugly_move(move);
-  var evaluation = evaluateBoard(game, move, sum, color);
-  game.undo();
-  return evaluation;
-}
+// function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
+//   positionCount++;
+//   var children = game.ugly_moves({ verbose: true });
+
+//   // 对所有合法走法进行排序，优先考虑评分较高的走法
+//   children.sort(function (a, b) {
+//     var scoreA = evaluateMove(game, a, sum, color); // 根据启发式评分
+//     var scoreB = evaluateMove(game, b, sum, color);
+//     return scoreB - scoreA; // 排序时优先考虑较高的评分
+//   });
+
+//   // 超过最大深度或节点是终端节点 (无子节点)
+//   if (depth === 0 || children.length === 0) {
+//     return [null, sum];
+//   }
+
+//   var bestMove = null;
+
+//   // 选择最大值或最小值
+//   var value = isMaximizingPlayer ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
+
+//   for (var i = 0; i < children.length; i++) {
+//     var currMove = children[i];
+//     game.ugly_move(currMove);
+//     var newSum = evaluateBoard(game, currMove, sum, color);
+
+//     // 递归调用
+//     var [childBestMove, childValue] = minimax(game, depth - 1, alpha, beta, !isMaximizingPlayer, newSum, color);
+//     game.undo();
+
+//     // 更新最佳走法和评估值
+//     if (isMaximizingPlayer) {
+//       if (childValue > value) {
+//         value = childValue;
+//         bestMove = currMove;
+//       }
+//       if (value > alpha) {
+//         alpha = value;
+//       }
+//     } else {
+//       if (childValue < value) {
+//         value = childValue;
+//         bestMove = currMove;
+//       }
+//       if (value < beta) {
+//         beta = value;
+//       }
+//     }
+
+//     // α-β 剪枝
+//     if (alpha >= beta) {
+//       break;
+//     }
+//   }
+
+//   return [bestMove, value];
+// }
+
+// // 评估一个走法的启发式函数，可以根据具体情况调整
+// function evaluateMove(game, move, sum, color) {
+//   game.ugly_move(move);
+//   var evaluation = evaluateBoard(game, move, sum, color);
+//   game.undo();
+//   return evaluation;
+// }
 
 function checkStatus(color) {
   if (color == 'black') {
