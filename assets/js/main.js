@@ -293,6 +293,40 @@ function evaluateBoard(game, move, prevSum, color) {
   return prevSum;
 }
 
+
+function squareToIndex(square) {
+  const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  const ranks = ['1', '2', '3', '4', '5', '6', '7', '8'];
+  
+  const file = square[0]; // 获取列
+  const rank = square[1]; // 获取行
+
+  const fileIndex = files.indexOf(file);
+  const rankIndex = 8 - parseInt(rank); // 行从1到8转换为从0到7
+
+  return rankIndex * 8 + fileIndex;
+}
+// // 评估一个走法的启发式函数，可以根据具体情况调整
+// 基于棋子位置和类型进行启发式评分
+function evaluateMove(game, move) {
+  const piece = move.piece; // 获取走法的棋子
+  const square = move.to;  // 目标方格
+  const color = game.turn(); // 获取当前玩家的颜色
+
+  // 获取棋子基本的权重
+  const pieceValue = weights[piece];
+
+  // 计算该棋子在目标位置的位置评分
+  let positionScore = 0;
+  if (color === 'w') {
+    positionScore = pstSelf[color][piece][squareToIndex(square)];
+  } else {
+    positionScore = pstOpponent[color][piece][squareToIndex(square)];
+  }
+
+  // 计算该走法的总评分：基本权重 + 位置评分
+  return pieceValue + positionScore;
+}
 /*
  * 执行 Minimax 算法以获得最佳的移动：
  * https://zh.wikipedia.org/wiki/%E6%9E%81%E5%B0%8F%E5%8C%96%E6%9E%81%E5%A4%A7%E7%AE%97%E6%B3%95 (提供了伪代码)
@@ -317,9 +351,22 @@ function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
   var children = game.ugly_moves({ verbose: true });
 
   // 随机排序移动，因此在相同的关系下不会总是选择相同的移动
-  children.sort(function (a, b) {
-    return 0.5 - Math.random();
-  });
+  // children.sort(function (a, b) {
+  //   return 0.5 - Math.random();
+  // });
+
+  //   // 对所有合法走法进行排序，优先考虑评分较高的走法
+  // children.sort(function (a, b) {
+  //   var scoreA = evaluateMove(game, a, sum, color); // 根据启发式评分
+  //   var scoreB = evaluateMove(game, b, sum, color);
+  //   return scoreB - scoreA; // 排序时优先考虑较高的评分
+  // });
+    // 对所有的走法进行排序
+    children.sort(function (a, b) {
+      const scoreA = evaluateMove(game, a); // 计算第一个走法的评分
+      const scoreB = evaluateMove(game, b); // 计算第二个走法的评分
+      return scoreB - scoreA; // 评分较高的走法排在前面
+    });
 
   var currMove;
   // 超过最大深度或节点是终端节点 (无子节点)
@@ -440,13 +487,6 @@ function minimax(game, depth, alpha, beta, isMaximizingPlayer, sum, color) {
 //   return [bestMove, value];
 // }
 
-// // 评估一个走法的启发式函数，可以根据具体情况调整
-// function evaluateMove(game, move, sum, color) {
-//   game.ugly_move(move);
-//   var evaluation = evaluateBoard(game, move, sum, color);
-//   game.undo();
-//   return evaluation;
-// }
 
 function checkStatus(color) {
   if (color == 'black') {
