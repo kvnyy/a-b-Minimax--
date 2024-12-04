@@ -4,7 +4,8 @@
  *
  * Copyright (c) 2022 XiaoXi
  */
-
+// import { Chess } from 'chess.js'
+// <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js" defer></script>
 var STACK_SIZE = 100; // 步历史记录堆栈的大小
 
 var board = null;
@@ -43,6 +44,84 @@ board = Chessboard('myBoard', config);
 
 
 timer = null;
+
+const classicGames = {
+  game1: [
+    "1.d4 Nf6",
+    "2.c4 e6",
+    "3.Nc3 Bb4",
+    "4.e3 d5",
+    "5.a3 Bxc3",
+    "6.bxc3 c5",
+    "7.cxd5 exd5",
+  ],
+  game2: [
+    "1.e4 e5",
+    "2.Nf3 Nc6",
+    "3.Bb5 a6",
+    "4.Ba4 Nf6",
+    "5.O-O Be7",
+    "6.Re1 b5",
+    "7.Bb3 d6",
+  ],
+};
+
+function reset() {
+  game.reset();
+  board.position(game.fen());
+}
+
+function replayGame(gameMoves) {
+  const pgn = gameMoves.join(' ');
+  game.reset();
+  game.load_pgn(pgn);
+
+  board.position(game.fen());
+
+  const moves = game.history();
+  game.reset();
+  board.position(game.fen());
+
+  let index = 0;
+
+  function step() {
+    if (index < moves.length) {
+      const move = moves[index];
+      game.move(move);
+      board.position(game.fen());
+      index++;
+      setTimeout(step, 1000);
+    }
+  }
+
+  step();
+}
+
+$('#commonRebegin1Btn').on('click', function () {
+  reset();
+  replayGame(classicGames.game1);
+  mdui.snackbar({
+    message: '经典对局一复现开始',
+    buttonText: '停止并重置',
+    onButtonClick: function () {
+      $('#resetBtn').click();
+    }
+  });
+});
+
+$('#commonRebegin2Btn').on('click', function () {
+  reset();
+  replayGame(classicGames.game2);
+  mdui.snackbar({
+    message: '经典对局二复现开始',
+    buttonText: '停止并重置',
+    onButtonClick: function () {
+      $('#resetBtn').click();
+    }
+  });
+});
+
+
 
 /*
  * 改编自 Sunfish.py 的 棋子-格子数组(Piece-Square Tables)：
